@@ -1,58 +1,64 @@
-﻿Shader "Unlit/yeh"
-{
-    Properties
-    {
-        _MainTex ("Texture", 2D) = "white" {}
-    }
-    SubShader
-    {
-        Tags { "RenderType"="Opaque" }
-        LOD 100
+﻿// Upgrade NOTE: replaced '_Object2World' with 'unity_ObjectToWorld'
 
+Shader "Unlit/More Textures"
+{
+    Properties{
+        // three textures we'll use in the material
+        _MainTex("Base texture", 2D) = "white" {}
+        _OcclusionMap("Occlusion", 2D) = "white" {}
+        _BumpMap("Normal Map", 2D) = "bump" {}
+    }
+        SubShader
+    {
         Pass
         {
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
-            // make fog work
-            #pragma multi_compile_fog
-
             #include "UnityCG.cginc"
 
-            struct appdata
-            {
-                float4 vertex : POSITION;
-                float2 uv : TEXCOORD0;
+            // exactly the same as in previous shader
+            struct v2f {
+                float3 worldPos : TEXCOORD0;
+                half3 tspace0 : TEXCOORD1;
+                half3 tspace1 : TEXCOORD2;
+                half3 tspace2 : TEXCOORD3;
+                float2 uv : TEXCOORD4;
+                float4 pos : SV_POSITION;
             };
-
-            struct v2f
-            {
-                float2 uv : TEXCOORD0;
-                UNITY_FOG_COORDS(1)
-                float4 vertex : SV_POSITION;
-				float4 screenUV : TEXCOORD1;
-            };
-
-            sampler2D _MainTex;
-            float4 _MainTex_ST;
-			sampler2D _CameraDepthTexture;
-
-            v2f vert (appdata v)
+            v2f vert(float4 vertex : POSITION, float3 normal : NORMAL, float4 tangent : TANGENT, float2 uv : TEXCOORD0)
             {
                 v2f o;
-                o.vertex = UnityObjectToClipPos(v.vertex);
-                o.uv = TRANSFORM_TEX(v.uv, _MainTex);
-                UNITY_TRANSFER_FOG(o,o.vertex);
-				o.screenUV = ComputeScreenPos(o.vertex);
+                o.pos = UnityObjectToClipPos(vertex);
+                o.worldPos = mul(unity_ObjectToWorld, vertex).xyz;
+                half3 wNormal = UnityObjectToWorldNormal(normal);
+                half3 wTangent = UnityObjectToWorldDir(tangent.xyz);
+                half tangentSign = tangent.w * unity_WorldTransformParams.w;
+                half3 wBitangent = cross(wNormal, wTangent) * tangentSign;
+                o.tspace0 = half3(wTangent.x, wBitangent.x, wNormal.x);
+                o.tspace1 = half3(wTangent.y, wBitangent.y, wNormal.y);
+                o.tspace2 = half3(wTangent.z, wBitangent.z, wNormal.z);
+                o.uv = uv;
                 return o;
             }
 
-            fixed4 frag (v2f i) : SV_Target
+            // textures from shader properties
+            sampler2D _MainTex;
+            sampler2D _OcclusionMap;
+            sampler2D _BumpMap;
+
+            fixed4 frag(v2f i) : SV_Target
             {
-				float2 uvLoc = i.screenUV.xy / i.screenUV.w;
-                // sample the texture
-                fixed4 col = tex2D(_CameraDepthTexture, uvLoc);
-                return col;
+                // same as from previous shader...
+                half3 tnormal = UnpackNormal(tex2D(_BumpMap, i.uv));
+                half3 worldNormal;
+                worldNormal.x = dot(i.tspace0, tnormal);
+                worldNormal.y = dot(i.tspace1, tnormal);
+                worldNormal.z = dot(i.tspace2, tnormal);
+
+                fixed4 c = fixed4(worldNormal, 1);
+
+                return c;
             }
             ENDCG
         }
