@@ -13,7 +13,6 @@
     }
     SubShader
     {
-        Tags { "RenderType"="Opaque"  "LightMode"="ForwardBase" "Queue" = "Transparent"}
 
 		Pass
 		{
@@ -58,12 +57,16 @@
 		}
         Pass
         {
+			Tags { "RenderType" = "Opaque"  "LightMode" = "ForwardBase" "Queue" = "Transparent"}
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
 
             #include "UnityCG.cginc"
 			#include "Lighting.cginc"
+			#include "AutoLight.cginc"
+
+			#pragma multi_compile_fwdbase
 
             struct appdata
             {
@@ -77,12 +80,14 @@
             {
                 float2 uv : TEXCOORD0;
 				float4 worldPosition : TEXCOORD1;
-                float4 position : SV_POSITION;
+                float4 pos : SV_POSITION;
 				float3 worldNormal : TEXCOORD2;
 
 				half3 xTangentToWorld : TEXCOORD4;
 				half3 yTangentToWorld : TEXCOORD5;
 				half3 zTangentToWorld : TEXCOORD6;
+
+				SHADOW_COORDS(7)
 
             };
 
@@ -124,7 +129,7 @@
             v2f vert (appdata IN)
             {
                 v2f o;
-                o.position = UnityObjectToClipPos(IN.position);
+                o.pos = UnityObjectToClipPos(IN.position);
 				o.worldPosition = mul(unity_ObjectToWorld, IN.position);
 				o.worldNormal = UnityObjectToWorldNormal(IN.normal);
 				float3 tangent = UnityObjectToWorldDir(IN.tangent);
@@ -133,6 +138,8 @@
 				o.yTangentToWorld = half3(tangent.y, bitangent.y, o.worldNormal.y);
 				o.zTangentToWorld = half3(tangent.z, bitangent.z, o.worldNormal.z);
 				o.uv = IN.uv;
+
+				TRANSFER_SHADOW(o)
                 return o;
             }
 
@@ -155,9 +162,39 @@
 
 				//newColor *= 1 - GetOutline(IN.worldNormal, IN.worldPosition);
 				//newColor += GetOutline(IN.worldNormal, IN.worldPosition) * _OutlineColor;
+				float shadow = SHADOW_ATTENUATION(IN);
+
+				newColor *= shadow;
 				return newColor;
             }
             ENDCG
         }
+		Pass
+		{
+			Tags{"LightMode" = "ShadowCaster"}
+
+			CGPROGRAM
+
+			#pragma vertex vertFunc
+			#pragma fragment fragFunx
+
+			#include "UnityCG.cginc"
+			#include "AutoLight.cginc"
+
+			struct vertexInput
+			{
+				float4 position : POSITION;
+				float2 uv : TEXCOORD0;
+			};
+
+			struct fragmentInput
+			{
+				float4 pos : SV_POSITION;
+				float2 uv : TEXCOORD0;
+			};
+
+			ENDCG
+		}
+		UsePass "Legacy Shaders/VertexLit/SHADOWCASTER"
     }
 }

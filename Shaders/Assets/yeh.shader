@@ -1,66 +1,56 @@
-﻿// Upgrade NOTE: replaced '_Object2World' with 'unity_ObjectToWorld'
-
-Shader "Unlit/More Textures"
+﻿Shader "Lit/Diffuse With Shadows"
 {
-    Properties{
-        // three textures we'll use in the material
-        _MainTex("Base texture", 2D) = "white" {}
-        _OcclusionMap("Occlusion", 2D) = "white" {}
-        _BumpMap("Normal Map", 2D) = "bump" {}
+    Properties
+    {
+        [NoScaleOffset] _MainTex("Texture", 2D) = "white" {}
     }
         SubShader
     {
         Pass
         {
+            Tags {"LightMode" = "ForwardBase"}
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
             #include "UnityCG.cginc"
+            #include "Lighting.cginc"
 
-            // exactly the same as in previous shader
-            struct v2f {
-                float3 worldPos : TEXCOORD0;
-                half3 tspace0 : TEXCOORD1;
-                half3 tspace1 : TEXCOORD2;
-                half3 tspace2 : TEXCOORD3;
-                float2 uv : TEXCOORD4;
-                float4 pos : SV_POSITION;
-            };
-            v2f vert(float4 vertex : POSITION, float3 normal : NORMAL, float4 tangent : TANGENT, float2 uv : TEXCOORD0)
-            {
-                v2f o;
-                o.pos = UnityObjectToClipPos(vertex);
-                o.worldPos = mul(unity_ObjectToWorld, vertex).xyz;
-                half3 wNormal = UnityObjectToWorldNormal(normal);
-                half3 wTangent = UnityObjectToWorldDir(tangent.xyz);
-                half tangentSign = tangent.w * unity_WorldTransformParams.w;
-                half3 wBitangent = cross(wNormal, wTangent) * tangentSign;
-                o.tspace0 = half3(wTangent.x, wBitangent.x, wNormal.x);
-                o.tspace1 = half3(wTangent.y, wBitangent.y, wNormal.y);
-                o.tspace2 = half3(wTangent.z, wBitangent.z, wNormal.z);
-                o.uv = uv;
-                return o;
-            }
+        // compile shader into multiple variants, with and without shadows
+        // (we don't care about any lightmaps yet, so skip these variants)
+        #pragma multi_compile_fwdbase nolightmap nodirlightmap nodynlightmap novertexlight
+        // shadow helper functions and macros
+        #include "AutoLight.cginc"
 
-            // textures from shader properties
-            sampler2D _MainTex;
-            sampler2D _OcclusionMap;
-            sampler2D _BumpMap;
-
-            fixed4 frag(v2f i) : SV_Target
-            {
-                // same as from previous shader...
-                half3 tnormal = UnpackNormal(tex2D(_BumpMap, i.uv));
-                half3 worldNormal;
-                worldNormal.x = dot(i.tspace0, tnormal);
-                worldNormal.y = dot(i.tspace1, tnormal);
-                worldNormal.z = dot(i.tspace2, tnormal);
-
-                fixed4 c = fixed4(worldNormal, 1);
-
-                return c;
-            }
-            ENDCG
+        struct v2f
+        {
+            float2 uv : TEXCOORD0;
+            SHADOW_COORDS(1) // put shadows data into TEXCOORD1
+            float4 pos : SV_POSITION;
+        };
+        v2f vert(appdata_base v)
+        {
+            v2f o;
+            o.pos = UnityObjectToClipPos(v.vertex);
+            o.uv = v.texcoord;
+            // compute shadows data
+            TRANSFER_SHADOW(o)
+            return o;
         }
+
+        sampler2D _MainTex;
+
+        fixed4 frag(v2f i) : SV_Target
+        {
+         fixed4 col = tex2D(_MainTex, i.uv);
+        fixed shadow = SHADOW_ATTENUATION(i);
+        fixed3 lighting = shadow;
+        col.rgb *= lighting;
+        return col;
+    }
+    ENDCG
+}
+
+// shadow casting support
+UsePass "Legacy Shaders/VertexLit/SHADOWCASTER"
     }
 }
