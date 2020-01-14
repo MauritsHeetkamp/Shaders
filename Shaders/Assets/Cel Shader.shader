@@ -86,8 +86,9 @@
 				half3 xTangentToWorld : TEXCOORD4;
 				half3 yTangentToWorld : TEXCOORD5;
 				half3 zTangentToWorld : TEXCOORD6;
+				float4 vertexLight : TEXCOORD7;
 
-				SHADOW_COORDS(7)
+				SHADOW_COORDS(8)
 
             };
 
@@ -100,12 +101,20 @@
 			sampler2D _Normal;
 			float _Shinyness;
 
-			float GetDiffuse(float3 worldNormal)
+			float GetDiffuse(float3 worldNormal, float attenuation = 0, bool directional = true)
 			{
-				float diffuseAmount = smoothstep(-_ShadowSharpness, _ShadowSharpness, dot(_WorldSpaceLightPos0, worldNormal));
-				float shadowLimiter =  step(_ShadowStrength, diffuseAmount);
-				diffuseAmount *= shadowLimiter;
-				diffuseAmount += (1 - shadowLimiter) * _ShadowStrength;
+				float diffuseAmount;
+				if (directional)
+				{
+					diffuseAmount = smoothstep(-_ShadowSharpness, _ShadowSharpness, dot(_WorldSpaceLightPos0, worldNormal));
+					float shadowLimiter = step(_ShadowStrength, diffuseAmount);
+					diffuseAmount *= shadowLimiter;
+					diffuseAmount += (1 - shadowLimiter) * _ShadowStrength;
+				}
+				else
+				{
+					diffuseAmount = attenuation;
+				}
 				return diffuseAmount;
 			}
 
@@ -128,6 +137,7 @@
 
             v2f vert (appdata IN)
             {
+				//Basic v2f
                 v2f o;
                 o.pos = UnityObjectToClipPos(IN.position);
 				o.worldPosition = mul(unity_ObjectToWorld, IN.position);
@@ -138,6 +148,22 @@
 				o.yTangentToWorld = half3(tangent.y, bitangent.y, o.worldNormal.y);
 				o.zTangentToWorld = half3(tangent.z, bitangent.z, o.worldNormal.z);
 				o.uv = IN.uv;
+
+				//Vertex Lighting
+				for (int counter = 0; counter < 4; counter++)
+				{
+					float3 lightPosition = float3(unity_4LightPosX0[counter], unity_4LightPosY0[counter], unity_4LightPosZ0[counter]);
+					float4 lightColor = unity_LightColor[counter];
+
+					float distanceAmount = distance(o.worldPosition, lightPosition);
+					float attenuation = 1 / (distanceAmount * unity_4LightAtten0[counter]);
+
+					float diffuse = GetDiffuse(o.worldNormal, attenuation, false);
+					float specular = GetSpecular(o.worldNormal, o.worldPosition);
+
+					o.vertexLight += diffuse;
+				}
+
 
 				TRANSFER_SHADOW(o)
                 return o;
@@ -165,34 +191,46 @@
 				float shadow = SHADOW_ATTENUATION(IN);
 
 				newColor *= shadow;
+
+				newColor = IN.vertexLight;
 				return newColor;
             }
             ENDCG
         }
+
 		Pass
 		{
-			Tags{"LightMode" = "ShadowCaster"}
+			Tags { "RenderType" = "Opaque"  "LightMode" = "ForwardBase" "Queue" = "Transparent"}
+			Blend One One
 
 			CGPROGRAM
+				#pragma vertex vert
+				#pragma fragment frag
+				#include "UnityCG.cginc"
 
-			#pragma vertex vertFunc
-			#pragma fragment fragFunx
+				struct vertInput
+				{
+					float4 position : POSITION;
+					float2 uv : TEXCOORD0;
+				};
 
-			#include "UnityCG.cginc"
-			#include "AutoLight.cginc"
+				struct fragInput
+				{
+					float4 pos : SV_POSITION;
+					float2 uv : TEXCOORD0;
+				};
 
-			struct vertexInput
-			{
-				float4 position : POSITION;
-				float2 uv : TEXCOORD0;
-			};
-
-			struct fragmentInput
-			{
-				float4 pos : SV_POSITION;
-				float2 uv : TEXCOORD0;
-			};
-
+				fragInput vert(vertInput IN)
+				{
+					fragInput o;
+					o.pos = UnityObjectToClipPos(IN.position);
+					o.uv = IN.uv;
+					return o;
+				}
+				float4 frag(fragInput IN) : SV_Target
+				{
+					return float4(0, 0, 0 , 1);
+				}
 			ENDCG
 		}
 		UsePass "Legacy Shaders/VertexLit/SHADOWCASTER"
