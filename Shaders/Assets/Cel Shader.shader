@@ -16,6 +16,7 @@
 
 		Pass
 		{
+		Tags{"LightMode" = "Always"}
 		ZWrite Off
 			CGPROGRAM
             #pragma vertex vert
@@ -155,13 +156,14 @@
 					float3 lightPosition = float3(unity_4LightPosX0[counter], unity_4LightPosY0[counter], unity_4LightPosZ0[counter]);
 					float4 lightColor = unity_LightColor[counter];
 
-					float distanceAmount = distance(o.worldPosition, lightPosition);
-					float attenuation = 1 / (distanceAmount * unity_4LightAtten0[counter]);
+					float3 direction = o.worldPosition - lightPosition;
+					float distanceAmount = dot(direction, direction);
+					float attenuation = 1 /  (1 + unity_4LightAtten0[counter] * distanceAmount);
 
 					float diffuse = GetDiffuse(o.worldNormal, attenuation, false);
 					float specular = GetSpecular(o.worldNormal, o.worldPosition);
 
-					o.vertexLight += diffuse;
+					o.vertexLight += diffuse * unity_LightColor[counter];
 				}
 
 
@@ -197,42 +199,6 @@
             }
             ENDCG
         }
-
-		Pass
-		{
-			Tags { "RenderType" = "Opaque"  "LightMode" = "ForwardBase" "Queue" = "Transparent"}
-			Blend One One
-
-			CGPROGRAM
-				#pragma vertex vert
-				#pragma fragment frag
-				#include "UnityCG.cginc"
-
-				struct vertInput
-				{
-					float4 position : POSITION;
-					float2 uv : TEXCOORD0;
-				};
-
-				struct fragInput
-				{
-					float4 pos : SV_POSITION;
-					float2 uv : TEXCOORD0;
-				};
-
-				fragInput vert(vertInput IN)
-				{
-					fragInput o;
-					o.pos = UnityObjectToClipPos(IN.position);
-					o.uv = IN.uv;
-					return o;
-				}
-				float4 frag(fragInput IN) : SV_Target
-				{
-					return float4(0, 0, 0 , 1);
-				}
-			ENDCG
-		}
 		UsePass "Legacy Shaders/VertexLit/SHADOWCASTER"
     }
 }
