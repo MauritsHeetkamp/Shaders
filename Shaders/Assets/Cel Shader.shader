@@ -194,7 +194,7 @@
 
 				newColor *= shadow;
 
-				newColor = IN.vertexLight;
+				//newColor = IN.vertexLight;
 				return newColor;
             }
             ENDCG
